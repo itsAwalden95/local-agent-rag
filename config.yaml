@@ -15,19 +15,19 @@ retriever:
 # New local model configurations
 models:
   router:
-    path: "/path/to/mistral-7b-instruct"
+    path: "/models/mistral-7b-instruct"
     type: "mistral"
     temperature: 0.0
     streaming: true
   
   researcher:
-    path: "/path/to/mistral-7b-instruct"
+    path: "/models/mistral-7b-instruct"
     type: "mistral"
     temperature: 0.0
     streaming: true
     
   responder:
-    path: "/path/to/mixtral-8x7b"
+    path: "/models/mixtral-8x7b"
     type: "mixtral"
     temperature: 0.1
     streaming: true
