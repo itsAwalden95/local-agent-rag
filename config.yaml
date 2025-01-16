@@ -1,3 +1,4 @@
+# Original retriever and rate limit settings remain the same
 retriever:
   file: "retriever/google-2024-environmental-report.pdf"
   headers_to_split_on:
@@ -8,14 +9,30 @@ retriever:
   directory: vector_db
   top_k: 3
   top_k_compression: 3
-  ensemble_weights: [0.3, 0.3, 0.4] 
+  ensemble_weights: [0.3, 0.3, 0.4]
   cohere_rerank_model: rerank-english-v3.0
-llm:
-  gpt_4o_mini: gpt-4o-mini-2024-07-18
-  gpt_4o: gpt-4o-2024-08-06
-  temperature: 0
+
+# New local model configurations
+models:
+  router:
+    path: "/models/mistral-7b-instruct"
+    type: "mistral"
+    temperature: 0.0
+    streaming: true
+  
+  researcher:
+    path: "/models/mistral-7b-instruct"
+    type: "mistral"
+    temperature: 0.0
+    streaming: true
+    
+  responder:
+    path: "/models/mixtral-8x7b"
+    type: "mixtral"
+    temperature: 0.1
+    streaming: true
 
 rate_limits:
   tokens_per_min: 30000
   chunk_size: 500
-  chunk_overlap: 50    
+  chunk_overlap: 50
