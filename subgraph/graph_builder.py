@@ -1,14 +1,12 @@
-### Build Index
-
-from langchain_community.vectorstores import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.retrievers import EnsembleRetriever, BM25Retriever
 from dotenv import load_dotenv
 from subgraph.graph_states import ResearcherState, QueryState
 from utils.prompt import GENERATE_QUERIES_SYSTEM_PROMPT
 from langchain_core.documents import Document
 from typing import Any, Literal, TypedDict, cast
-
+import os
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
@@ -34,53 +32,71 @@ TOP_K_COMPRESSION = config["retriever"]["top_k_compression"]
 ENSEMBLE_WEIGHTS = config["retriever"]["ensemble_weights"]
 COHERE_RERANK_MODEL = config["retriever"]["cohere_rerank_model"]
 
-def _setup_vectorstore() -> Chroma:
+def _setup_vectorstore() -> FAISS:
     """
-    Set up and return the Chroma vector store instance.
+    Set up and return the FAISS vector store instance.
     """
-    embeddings = OpenAIEmbeddings()
-    return Chroma(
-        collection_name=VECTORSTORE_COLLECTION,
-        embedding_function=embeddings,
-        persist_directory=VECTORSTORE_DIRECTORY
-    )
+    try:
+        embeddings = HuggingFaceEmbeddings(
+            model_name="all-MiniLM-L6-v2",
+            model_kwargs={'device': 'cpu'}
+        )
+        
+        # Load existing FAISS index if it exists
+        save_path = os.path.join(VECTORSTORE_DIRECTORY, VECTORSTORE_COLLECTION)
+        
+        if os.path.exists(save_path):
+            logger.info(f"Loading existing FAISS index from {save_path}")
+            vectorstore = FAISS.load_local(
+                save_path,
+                embeddings,
+                allow_dangerous_deserialization = True
+            )
+        else:
+            logger.info("Creating new FAISS index")
+            # Create an empty FAISS index
+            vectorstore = FAISS.from_documents(
+                [],  # Empty document list to initialize
+                embeddings
+            )
+            
+        logger.info(f"Successfully loaded vectorstore")
+        return vectorstore
+        
+    except Exception as e:
+        logger.error(f"Error setting up vectorstore: {e}")
+        raise
 
 
 
-def _load_documents(vectorstore: Chroma) -> list[Document]:
+def _load_documents(vectorstore: FAISS) -> list[Document]:
     """
-    Load documents and metadata from the vector store and return them as Langchain Document objects.
-
-    Args:
-        vectorstore (Chroma): The vector store instance.
-
-    Returns:
-        list[Document]: A list of Document objects containing the content and metadata.
+    Load documents from FAISS store
     """
-    all_data = vectorstore.get(include=["documents", "metadatas"])
-    documents: list[Document] = []
-
-    for content, meta in zip(all_data["documents"], all_data["metadatas"]):
-        if meta is None:
-            meta = {}
-        elif not isinstance(meta, dict):
-            raise ValueError(f"Expected metadata to be a dict, but got {type(meta)}")
-
-        documents.append(Document(page_content=content, metadata=meta))
-
-    return documents
-
-
+    try:
+        if hasattr(vectorstore, 'docstore'):
+            docs = list(vectorstore.docstore._dict.values())
+            if not docs:
+                logger.warning("No documents found in vectorstore")
+            return docs
+        else:
+            logger.warning("Vectorstore has no docstore attribute")
+            return []
+    except Exception as e:
+        logger.error(f"Error loading documents: {e}")
+        return []
 
 
-def _build_retrievers(documents: list[Document], vectorstore: Chroma) -> ContextualCompressionRetriever:
+
+
+def _build_retrievers(documents: list[Document], vectorstore: FAISS) -> ContextualCompressionRetriever:
     """
     Build and return a compression retriever that includes
     an ensemble retriever and Cohere-based contextual compression.
 
     Args:
         documents (list[Document]): List of Document objects.
-        vectorstore (Chroma): The vector store to use for building retrievers.
+        vectorstore (FAISS): The vector store to use for building retrievers.
 
     Returns:
         ContextualCompressionRetriever: A compression retriever that can be used to fetch and re-rank documents.
@@ -134,7 +150,7 @@ async def generate_queries(
         queries: list[str]
 
     logger.info("---GENERATE QUERIES---")
-    model = ChatOpenAI(model="gpt-4o-mini-2024-07-18", temperature=0)
+    model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     messages = [
         {"role": "system", "content": GENERATE_QUERIES_SYSTEM_PROMPT},
         {"role": "human", "content": state.question},
