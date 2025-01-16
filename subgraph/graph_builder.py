@@ -1,3 +1,4 @@
+from model import create_local_llm
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.retrievers import EnsembleRetriever, BM25Retriever
@@ -10,7 +11,6 @@ import os
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langchain_openai import ChatOpenAI
 from langgraph.types import Send
 
 

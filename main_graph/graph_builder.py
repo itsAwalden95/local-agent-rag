@@ -7,11 +7,11 @@ conducting research, and formulating responses.
 """
 
 from typing import Any, Literal, TypedDict, cast
+from models import create_local_llm
 
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
-from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt, Command
 from main_graph.graph_states import AgentState, Router, GradeHallucinations, InputState
 from utils.prompt import ROUTER_SYSTEM_PROMPT, RESEARCH_PLAN_SYSTEM_PROMPT, MORE_INFO_SYSTEM_PROMPT, GENERAL_SYSTEM_PROMPT, CHECK_HALLUCINATIONS, RESPONSE_SYSTEM_PROMPT
@@ -34,9 +34,9 @@ logging.getLogger("urllib3").propagate = False
 logging.getLogger("httpx").propagate = False
 
 
-GPT_4o_MINI = config["llm"]["gpt_4o_mini"]
-GPT_4o = config["llm"]["gpt_4o"]
-TEMPERATURE = config["llm"]["temperature"]
+router_model = create_local_llm(config["models"]["router"])
+researcher_model = create_local_llm(config["models"]["researcher"])
+responder_model = create_local_llm(config["models"]["responder"])
 
 
 async def analyze_and_route_query(
@@ -54,7 +54,7 @@ async def analyze_and_route_query(
     Returns:
         dict[str, Router]: A dictionary containing the 'router' key with the classification result (classification type and logic).
     """
-    model = ChatOpenAI(model=GPT_4o, temperature=TEMPERATURE, streaming=True)
+    router_model = create_local_llm(config["models"]["router"])
     messages = [
         {"role": "system", "content": ROUTER_SYSTEM_PROMPT}
     ] + state.messages
@@ -111,7 +111,7 @@ async def create_research_plan(
 
         steps: list[str]
 
-    model = ChatOpenAI(model=GPT_4o_MINI, temperature=TEMPERATURE, streaming=True)
+    researcher_model = create_local_llm(config["models"]["researcher"])
     messages = [
         {"role": "system", "content": RESEARCH_PLAN_SYSTEM_PROMPT}
     ] + state.messages
@@ -136,7 +136,7 @@ async def ask_for_more_info(
     Returns:
         dict[str, list[str]]: A dictionary with a 'messages' key containing the generated response.
     """
-    model = ChatOpenAI(model=GPT_4o_MINI, temperature=TEMPERATURE, streaming=True)
+    router_model = create_local_llm(config["models"]["router"])
     system_prompt = MORE_INFO_SYSTEM_PROMPT.format(
         logic=state.router["logic"]
     )
@@ -201,7 +201,7 @@ async def respond_to_general_query(
     Returns:
         dict[str, list[str]]: A dictionary with a 'messages' key containing the generated response.
     """
-    model = ChatOpenAI(model=GPT_4o_MINI, temperature=TEMPERATURE, streaming=True)
+    responder_model = create_local_llm(config["models"]["responder"])  # Use responder model since it's generating responses
     system_prompt = GENERAL_SYSTEM_PROMPT.format(
         logic=state.router["logic"]
     )
@@ -275,7 +275,7 @@ async def check_hallucinations(
     Returns:
         dict[str, Router]: A dictionary containing the 'router' key with the classification result (classification type and logic).
     """
-    model = ChatOpenAI(model=GPT_4o_MINI, temperature=TEMPERATURE, streaming=True)
+    router_model = create_local_llm(config["models"]["router"])
     system_prompt = CHECK_HALLUCINATIONS.format(
         documents=state.documents,
         generation=state.messages[-1]
