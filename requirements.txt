@@ -1,7 +1,25 @@
+# Core dependencies
 rank_bm25
-faiss
 langchain
 langchain-core
 langchain-community
-langchain-openai
-langchain_cohere
+langchain-cohere
+langchain_community
+
+# Vector store
+faiss-cpu  # Using FAISS instead of ChromaDB for Power compatibility
+
+# Transformers and related libraries
+transformers>=4.36.0
+accelerate>=0.25.0
+sentencepiece>=0.1.99
+protobuf>=4.24.0
+psutil
+
+# NOTE: PyTorch is installed via conda:
+# conda install -c rocketce pytorch-cpu=2.0.1
+
+# Additional utilities
+python-dotenv
+pyyaml
+typing-extensions>=4.5.0
