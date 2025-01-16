@@ -1,8 +1,7 @@
 rank_bm25
-chromadb
+faiss
 langchain
 langchain-core
 langchain-community
 langchain-openai
-chromadb 
 langchain_cohere
