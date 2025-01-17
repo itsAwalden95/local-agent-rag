@@ -150,7 +150,7 @@ async def generate_queries(
         queries: list[str]
 
     logger.info("---GENERATE QUERIES---")
-    model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    responder_model = create_local_llm(config["models"]["responder"])
     messages = [
         {"role": "system", "content": GENERATE_QUERIES_SYSTEM_PROMPT},
         {"role": "human", "content": state.question},

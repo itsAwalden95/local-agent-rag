@@ -26,10 +26,9 @@ from utils.utils import config
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-logging.getLogger("openai").setLevel(logging.WARNING)  
+
 logging.getLogger("urllib3").setLevel(logging.WARNING) 
 
-logging.getLogger("openai").propagate = False
 logging.getLogger("urllib3").propagate = False
 logging.getLogger("httpx").propagate = False
 
@@ -325,7 +324,7 @@ async def respond(
         dict[str, list[str]]: A dictionary with a 'messages' key containing the generated response.
     """
     logging.info("--- RESPONSE GENERATION STEP ---")
-    model = ChatOpenAI(model=GPT_4o, temperature=TEMPERATURE, streaming=True)
+    responder_model = create_local_llm(config["models"]["responder"])
     context = format_docs(state.documents)
     prompt = RESPONSE_SYSTEM_PROMPT.format(context=context)
     messages = [{"role": "system", "content": prompt}] + state.messages
