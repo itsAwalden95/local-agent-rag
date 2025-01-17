@@ -10,10 +10,9 @@ langchain_community
 faiss-cpu  # Using FAISS instead of ChromaDB for Power compatibility
 
 # Transformers and related libraries
-transformers>=4.36.0
-accelerate>=0.25.0
-sentencepiece>=0.1.99
-protobuf>=4.24.0
+transformers
+sentencepiece
+protobuf
 psutil
 
 # NOTE: PyTorch is installed via conda:
@@ -22,4 +21,4 @@ psutil
 # Additional utilities
 python-dotenv
 pyyaml
-typing-extensions>=4.5.0
+typing-extensions
