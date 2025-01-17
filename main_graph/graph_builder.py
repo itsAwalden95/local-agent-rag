@@ -7,7 +7,7 @@ conducting research, and formulating responses.
 """
 
 from typing import Any, Literal, TypedDict, cast
-from models import create_local_llm
+from local_inference import create_local_llm
 
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import RunnableConfig
