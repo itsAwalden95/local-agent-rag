@@ -1,17 +1,18 @@
-"""Local inference module for running language models on IBM Power architecture.
+"""Local inference module for running quantized language models on IBM Power architecture.
 
 This module provides a drop-in replacement for OpenAI's chat completion API,
-allowing for local inference on IBM Power servers.
+using GGUF quantized models for efficient inference.
 """
 
+import os
 from typing import List, Optional, Dict, Any, Union
 from dataclasses import dataclass
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
-from threading import Thread
-import torch
+from llama_cpp import Llama
 import logging
+import json
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 @dataclass
 class Message:
@@ -19,118 +20,87 @@ class Message:
     content: str
 
 class LocalLLMChat:
-    """Local LLM chat implementation compatible with ChatOpenAI interface."""
+    """Local LLM chat implementation using GGUF models."""
     
     def __init__(
         self,
         model_path: str,
         model_type: str = "mistral",
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
         temperature: float = 0.0,
         max_length: int = 2048,
-        streaming: bool = True
+        streaming: bool = True,
+        n_ctx: int = 2048,  # Context window size
+        n_threads: Optional[int] = None  # Number of threads to use
     ):
-        """Initialize local LLM for chat.
-        
-        Args:
-            model_path: Path to the model weights
-            model_type: Type of model architecture
-            device: Device to run inference on
-            temperature: Sampling temperature
-            max_length: Maximum sequence length
-            streaming: Whether to stream output tokens
-        """
-        self.device = device
+        """Initialize local LLM for chat."""
         self.temperature = temperature
         self.max_length = max_length
         self.streaming = streaming
         
-        # Load model and tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            low_cpu_mem_usage=True
-        )
-        self.model.to(device)
-        
-        # Set up streamer if needed
-        self.streamer = TextIteratorStreamer(self.tokenizer) if streaming else None
+        # Verify model path exists
+        if not os.path.exists(model_path):
+            raise ValueError(f"Model path does not exist: {model_path}")
+            
+        logger.info(f"Loading model from {model_path}")
+        try:
+            # Initialize the GGUF model
+            self.model = Llama(
+                model_path=model_path,
+                n_ctx=n_ctx,
+                n_threads=n_threads or os.cpu_count(),
+                verbose=False
+            )
+            logger.info("Model loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Error loading model: {str(e)}")
+            raise
 
-    def _format_chat_prompt(self, messages: List[Message]) -> str:
-        """Format chat messages into model prompt."""
+    def _format_chat_prompt(self, messages: List[Message]) -> List[Dict[str, str]]:
+        """Format chat messages for the model."""
         formatted = []
         for msg in messages:
-            if msg.role == "system":
-                formatted.append(f"<|system|>\n{msg.content}</s>")
-            elif msg.role == "user":
-                formatted.append(f"<|user|>\n{msg.content}</s>") 
-            elif msg.role == "assistant":
-                formatted.append(f"<|assistant|>\n{msg.content}</s>")
-        return "\n".join(formatted) + "\n<|assistant|>\n"
+            formatted.append({
+                "role": msg.role,
+                "content": msg.content
+            })
+        return formatted
 
     async def ainvoke(
         self, 
         messages: List[Dict[str, str]], 
         structured_output: Optional[Any] = None
     ) -> Union[Dict[str, str], Any]:
-        """Async interface for chat completion.
-        
-        Args:
-            messages: List of message dictionaries
-            structured_output: Optional type for structured output parsing
-            
-        Returns:
-            Generated response
-        """
-        # Convert dict messages to dataclass
+        """Async interface for chat completion."""
         msgs = [Message(**msg) for msg in messages]
-        prompt = self._format_chat_prompt(msgs)
+        formatted_msgs = self._format_chat_prompt(msgs)
         
-        # Tokenize input
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-        
-        # Generate response
-        if self.streaming:
-            # Run in separate thread if streaming
-            thread = Thread(target=self._generate, args=(inputs, self.streamer))
-            thread.start()
-            
-            # Collect streamed output
-            generated_text = ""
-            for new_text in self.streamer:
-                generated_text += new_text
-                
-        else:
-            # Generate full response at once
-            with torch.no_grad():
-                output_ids = self.model.generate(
-                    **inputs,
-                    max_length=self.max_length,
-                    temperature=self.temperature,
-                    do_sample=self.temperature > 0
-                )
-            generated_text = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
-            
-        # Parse structured output if needed
-        if structured_output is not None:
-            # Add structured output parsing logic here
-            pass
-            
-        return {"role": "assistant", "content": generated_text}
-        
-    def _generate(self, inputs: Dict[str, torch.Tensor], streamer: TextIteratorStreamer):
-        """Run generation in thread for streaming."""
-        with torch.no_grad():
-            self.model.generate(
-                **inputs,
-                max_length=self.max_length,
+        try:
+            # Generate response
+            completion = self.model.create_chat_completion(
+                messages=formatted_msgs,
                 temperature=self.temperature,
-                do_sample=self.temperature > 0,
-                streamer=streamer
+                max_tokens=self.max_length,
+                stream=self.streaming
             )
+            
+            if self.streaming:
+                # Handle streaming response
+                generated_text = ""
+                for chunk in completion:
+                    if "content" in chunk["choices"][0]["delta"]:
+                        new_text = chunk["choices"][0]["delta"]["content"]
+                        generated_text += new_text
+            else:
+                # Handle non-streaming response
+                generated_text = completion["choices"][0]["message"]["content"]
+                
+            return {"role": "assistant", "content": generated_text}
+            
+        except Exception as e:
+            logger.error(f"Error generating response: {str(e)}")
+            raise
 
-# Helper function to create model instances
 def create_local_llm(model_config: Dict[str, Any]) -> LocalLLMChat:
     """Create local LLM instance based on config."""
     return LocalLLMChat(
